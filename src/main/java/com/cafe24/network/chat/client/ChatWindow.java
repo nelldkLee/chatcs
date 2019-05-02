@@ -19,7 +19,12 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.Socket;
+import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+
+import com.cafe24.network.chat.server.ChatServer;
+import com.cafe24.network.chat.util.ChatProtocol;
 
 public class ChatWindow {
 
@@ -28,17 +33,22 @@ public class ChatWindow {
 	private Button buttonSend;
 	private TextField textField;
 	private TextArea textArea;
-	private Socket socket;
 	private String name;
+	private BufferedReader bufferedReader;
+	private PrintWriter printWriter;
+	private Socket socket;
 	
-	public ChatWindow(String name, Socket socket) {
+	public ChatWindow(String name, Socket socket) throws UnsupportedEncodingException, IOException {
 		frame = new Frame(name);
 		pannel = new Panel();
 		buttonSend = new Button("Send");
 		textField = new TextField();
 		textArea = new TextArea(30, 80);
-		this.socket = socket;
 		this.name = name;
+		this.socket = socket;
+		bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream() , "utf-8"));
+		printWriter = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), "utf-8"), true);
+		new ChatClient(bufferedReader).start();
 	}
 
 	public void show() throws UnsupportedEncodingException, IOException {
@@ -59,8 +69,9 @@ public class ChatWindow {
 			@Override
 			public void keyPressed(KeyEvent e) {
 				char keyCode = e.getKeyChar();
-				if(keyCode == KeyEvent.VK_ENTER) {
-					
+				if(keyCode == KeyEvent.VK_ENTER && textField.getText().trim().length() > 1) {
+					sendMessage();
+					textField.setText("");
 				}
 			}
 			
@@ -83,49 +94,112 @@ public class ChatWindow {
 		});
 		frame.setVisible(true);
 		frame.pack();
-		running();
 	}
 	
-	private void running() throws UnsupportedEncodingException, IOException {
-		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream() , "utf-8"));
-		PrintWriter printWriter = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), "utf-8"), true);
-		printWriter.println("join:" + name);
-		printWriter.flush();
-		updateTextArea("채팅 방에 입장하셨습니다.");
+	
+
+	public void updateTextArea(String message) {
+		textArea.append(message);
+		textArea.append("\n");
 		
-		while(true) {
-			String response = bufferedReader.readLine();
-			dispatchResponse(response);
-			if(response == null) {
-				updateTextArea("방이 종료되었습니다.!!!!!!!");
+	}
+	
+	public void sendMessage() {
+		String message = textField.getText();
+		sendChatRequest(ChatProtocol.MESSAGE, message);
+	}
+	public void sendChatRequest(String protocol, String message) {
+		printWriter.println(protocol + ChatProtocol.COLON +message);
+	}
+	
+	public class ChatClient extends Thread{
+		
+		private BufferedReader bufferedReader;
+		
+		public ChatClient(BufferedReader bufferedReader) {
+			this.bufferedReader = bufferedReader;
+		}
+		
+		public void run(){
+			try {
+				networking();
+			} catch (SocketException e) {
+				e.printStackTrace();
+				updateTextArea("서버 연결이 끊겼습니다.");
+			} catch (IOException e) {
+				System.out.println("서버 연결이 끊겼습니다.");
+			} finally {
+				destroyedChat();
+			}
+		}
+		public void networking() throws IOException {
+			sendChatRequest(ChatProtocol.JOIN, name);
+				
+			while(true) {
+				
+				String response = bufferedReader.readLine();
+				dispatchChatResponse(response);
+				if (response == null) {
+					doQuit();
+					break;
+				}
+			}
+		}
+		
+		public void dispatchChatResponse(String response) {
+			String[] tokens = response.split(":");
+			String protocol = tokens[0];
+			String context = tokens[1];
+			System.out.println("protocol"+ protocol);
+			switch (protocol) {
+			case ChatProtocol.JOIN:
+				doJoin(context);
+				break;
+			case ChatProtocol.MESSAGE:
+				doMessage(context);
+				break;
+			case ChatProtocol.QUIT:
+				doQuit();
+				break;
+			case ChatProtocol.PERMIT:
+				doPermit();
+				break;
+			default:
+				System.out.println("에러:알수 없는 요청(" + protocol + ")");
 				break;
 			}
 			
 		}
 		
-	}
-	
-	private void dispatchResponse(String response) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	private void updateTextArea(String message) {
-		textArea.append(message);
-		textArea.append("\n");
-	}
-	
-	private void sendMessage() {
-		String message = textField.getText();
-	}
-	
-	private PrintWriter convertToPrintWriter(Socket socket) {
-		PrintWriter pr = null;
-		try {
-			pr = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8), true);
-		} catch (IOException e) {
-			e.printStackTrace();
+		private void doPermit() {
+			updateTextArea("채팅 방에 입장하셨습니다.");
 		}
-		return pr;
+
+		private void doQuit() {
+			updateTextArea("방이 종료되었습니다.!!!!!!!");
+		}
+
+		private void doMessage(String context) {
+			String[] temp = context.split(">");
+			String messageName = temp[0];
+			if(name.equals(messageName)) {
+				context = "나>>>" + temp[1];
+			}
+			updateTextArea(context);
+		}
+
+		private void doJoin(String context) {
+			updateTextArea(context);
+		}
+		private void destroyedChat() {
+			if (socket != null && socket.isClosed() == false) {
+				try {
+					socket.close();
+				} catch (IOException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+			}
+		}
 	}
 }

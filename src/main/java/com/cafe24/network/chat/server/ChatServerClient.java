@@ -28,6 +28,7 @@ public class ChatServerClient extends Thread {
 
 	@Override
 	public void run() {
+		
 		InetSocketAddress inetRemoteSocketAddress = (InetSocketAddress) socket.getRemoteSocketAddress();
 		String remoteHostAddress = inetRemoteSocketAddress.getAddress().getHostAddress();
 		int remotePort = inetRemoteSocketAddress.getPort();
@@ -35,7 +36,7 @@ public class ChatServerClient extends Thread {
 		ChatServer.consoleLog("connected by client[" + remoteHostAddress + ":" + remotePort + "]");
 
 		try {
-			// 4. IOStream 받아오기
+
 			InputStream is = socket.getInputStream();
 			OutputStream os = socket.getOutputStream();
 
@@ -43,19 +44,21 @@ public class ChatServerClient extends Thread {
 			PrintWriter pr = new PrintWriter(new OutputStreamWriter(os, "utf-8"), true);
 
 			while (true) {
-				// 5. 데이터 읽기
+
 				String request = br.readLine();
 
 				if (request == null) {
 					ChatServer.consoleLog("클라이언트로 부터 연결 끊김");
+					doQuit();
 					break;
 				}
-				dispatchRequest(request);
+				dispatchChatRequest(request);
 				ChatServer.consoleLog("received" + request);
 			}
 
 		} catch (SocketException e) {
-			ChatServer.consoleLog("sudden closed");
+			ChatServer.consoleLog("socket closed");
+			doQuit();
 
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -85,19 +88,16 @@ public class ChatServerClient extends Thread {
 		return listClient;
 	}
 
-	private void dispatchRequest(String request) {
+	private void dispatchChatRequest(String request) {
 		String[] tokens = request.split(":");
 		String protocol = tokens[0];
 		String context = tokens[1];
-		switch (tokens[0]) {
+		switch (protocol) {
 		case ChatProtocol.JOIN:
 			doJoin(context);
 			break;
 		case ChatProtocol.MESSAGE:
 			doMessage(context);
-			break;
-		case ChatProtocol.QUIT:
-			doQuit();
 			break;
 		default:
 			ChatServer.consoleLog("에러:알수 없는 요청(" + protocol + ")");
@@ -106,34 +106,31 @@ public class ChatServerClient extends Thread {
 	}
 
 	private void doQuit() {
-
+		broadcast(ChatProtocol.MESSAGE, nickname + ChatProtocol.OUT_MESSAGE);
 	}
 
 	private void doMessage(String context) {
-
+		String chatMessage = nickname + ">"+ context;
+		broadcast(ChatProtocol.MESSAGE, chatMessage);
 	}
 
 	private void doJoin(String context) {
 		this.nickname = context;
-		String joinMessage = nickname + "님이 참여하였습니다.";
-		broadcast(joinMessage);
+		broadcast(ChatProtocol.JOIN, context + ChatProtocol.JOIN_MESSAGE);
 		synchronized (listClient) {
 			listClient.add(this);
 		}
-		PrintWriter printWriter = convertToPrintWriter(this.getSocket());
-		printWriter.println("join:ok");
-		printWriter.flush();
+		sendChatResponse(this.getSocket(), ChatProtocol.PERMIT, ChatProtocol.SUCCESS);
 	}
 
-	private void broadcast(String joinMessage) {
+	private void broadcast(String protocol, String message) {
 		synchronized (listClient) {
 			listClient.forEach((client) -> {
-					PrintWriter pr = convertToPrintWriter(client.getSocket());
-					pr.println(joinMessage);
-					pr.flush();
+					sendChatResponse(client.getSocket(), protocol, message);
 			});
-		}	
+		}
 	}
+	
 	private PrintWriter convertToPrintWriter(Socket socket) {
 		PrintWriter printWriter = null;
 		try {
@@ -142,5 +139,11 @@ public class ChatServerClient extends Thread {
 			e.printStackTrace();
 		}
 		return printWriter;
+	}
+	
+	private void sendChatResponse(Socket socket, String protocol, String message) {
+		PrintWriter pr = convertToPrintWriter(socket);
+		pr.println(protocol + ChatProtocol.COLON +message);
+		pr.flush();
 	}
 }
