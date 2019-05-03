@@ -1,4 +1,5 @@
 package com.cafe24.network.chat.client;
+
 import java.awt.BorderLayout;
 import java.awt.Button;
 import java.awt.Color;
@@ -20,10 +21,7 @@ import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.Socket;
 import java.net.SocketException;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
-import com.cafe24.network.chat.server.ChatServer;
 import com.cafe24.network.chat.util.ChatProtocol;
 
 public class ChatWindow {
@@ -37,7 +35,7 @@ public class ChatWindow {
 	private BufferedReader bufferedReader;
 	private PrintWriter printWriter;
 	private Socket socket;
-	
+
 	public ChatWindow(String name, Socket socket) throws UnsupportedEncodingException, IOException {
 		frame = new Frame(name);
 		pannel = new Panel();
@@ -46,7 +44,7 @@ public class ChatWindow {
 		textArea = new TextArea(30, 80);
 		this.name = name;
 		this.socket = socket;
-		bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream() , "utf-8"));
+		bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "utf-8"));
 		printWriter = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), "utf-8"), true);
 		new ChatClient(bufferedReader).start();
 	}
@@ -55,9 +53,9 @@ public class ChatWindow {
 		// Button
 		buttonSend.setBackground(Color.GRAY);
 		buttonSend.setForeground(Color.WHITE);
-		buttonSend.addActionListener( new ActionListener() {
+		buttonSend.addActionListener(new ActionListener() {
 			@Override
-			public void actionPerformed( ActionEvent actionEvent ) {
+			public void actionPerformed(ActionEvent actionEvent) {
 				sendMessage();
 			}
 		});
@@ -69,12 +67,12 @@ public class ChatWindow {
 			@Override
 			public void keyPressed(KeyEvent e) {
 				char keyCode = e.getKeyChar();
-				if(keyCode == KeyEvent.VK_ENTER && textField.getText().trim().length() > 1) {
+				if (keyCode == KeyEvent.VK_ENTER && textField.getText().trim().length() > 1) {
 					sendMessage();
 					textField.setText("");
 				}
 			}
-			
+
 		});
 		// Pannel
 		pannel.setBackground(Color.LIGHT_GRAY);
@@ -95,32 +93,31 @@ public class ChatWindow {
 		frame.setVisible(true);
 		frame.pack();
 	}
-	
-	
 
 	public void updateTextArea(String message) {
 		textArea.append(message);
 		textArea.append("\n");
-		
+
 	}
-	
+
 	public void sendMessage() {
 		String message = textField.getText();
 		sendChatRequest(ChatProtocol.MESSAGE, message);
 	}
+
 	public void sendChatRequest(String protocol, String message) {
-		printWriter.println(protocol + ChatProtocol.COLON +message);
+		printWriter.println(protocol + ChatProtocol.COLON + message);
 	}
-	
-	public class ChatClient extends Thread{
-		
+
+	public class ChatClient extends Thread {
+
 		private BufferedReader bufferedReader;
-		
+
 		public ChatClient(BufferedReader bufferedReader) {
 			this.bufferedReader = bufferedReader;
 		}
-		
-		public void run(){
+
+		public void run() {
 			try {
 				networking();
 			} catch (SocketException e) {
@@ -132,11 +129,12 @@ public class ChatWindow {
 				destroyedChat();
 			}
 		}
+
 		public void networking() throws IOException {
 			sendChatRequest(ChatProtocol.JOIN, name);
-				
-			while(true) {
-				
+
+			while (true) {
+
 				String response = bufferedReader.readLine();
 				dispatchChatResponse(response);
 				if (response == null) {
@@ -145,18 +143,21 @@ public class ChatWindow {
 				}
 			}
 		}
-		
+
 		public void dispatchChatResponse(String response) {
 			String[] tokens = response.split(":");
 			String protocol = tokens[0];
 			String context = tokens[1];
-			System.out.println("protocol"+ protocol);
+			System.out.println("protocol" + protocol);
 			switch (protocol) {
 			case ChatProtocol.JOIN:
 				doJoin(context);
 				break;
 			case ChatProtocol.MESSAGE:
 				doMessage(context);
+				break;
+			case ChatProtocol.P2P:
+				doP2P(context);
 				break;
 			case ChatProtocol.QUIT:
 				doQuit();
@@ -168,9 +169,19 @@ public class ChatWindow {
 				System.out.println("에러:알수 없는 요청(" + protocol + ")");
 				break;
 			}
-			
 		}
-		
+
+		private void doP2P(String context) {
+			String[] temp = context.split(">");
+			String[] p2p = temp[0].split("@");
+			if (name.equals(p2p[0])) {
+				context = p2p[1] + "님에게 귓속말: " + temp[1];
+			} else {
+				context = p2p[0] + "님의 귓속말: " + temp[1];
+			}
+			updateTextArea(context);
+		}
+
 		private void doPermit() {
 			updateTextArea("채팅 방에 입장하셨습니다.");
 		}
@@ -182,7 +193,7 @@ public class ChatWindow {
 		private void doMessage(String context) {
 			String[] temp = context.split(">");
 			String messageName = temp[0];
-			if(name.equals(messageName)) {
+			if (name.equals(messageName)) {
 				context = "나>>>" + temp[1];
 			}
 			updateTextArea(context);
@@ -191,6 +202,7 @@ public class ChatWindow {
 		private void doJoin(String context) {
 			updateTextArea(context);
 		}
+
 		private void destroyedChat() {
 			if (socket != null && socket.isClosed() == false) {
 				try {

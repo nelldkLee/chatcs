@@ -4,13 +4,13 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 public class ChatServer {
 	
 	private static final int PORT = 8888;
-	private static List<ChatServerClient> listClient = new ArrayList<>();
+	private static Map<String, ChatServerClient> listClient = new HashMap<String, ChatServerClient>();
 
 	public static void main(String[] args) {
 
